@@ -1,0 +1,372 @@
+---
+title: "Project5"
+author: "Jordan Badstuebner"
+date: "May 2020"
+header-includes:
+  - \usepackage{float}
+  - \floatplacement{figure}{H}  #make every figure with caption = h, this was the fix
+output:
+  pdf_document: default
+fig_caption: yes
+---
+```{r include=FALSE}
+##When I knit, PDF will NOT show:
+#code cells
+#messages
+
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE,
+                      warning = FALSE,
+                      fig.width = 6,
+                      fig.asp = .628)
+```
+
+```{r include=FALSE}
+#load the needed libraries
+library(rmarkdown)
+library(markovchain)
+library(diagram)
+library(knitr)
+library(kableExtra)
+library(expm)
+```
+
+```{r include=FALSE}
+#initialize trucks, lambda and matrix
+trucks = c("1","2","3","4","5")
+lambda = 1
+```
+
+\section{Introduction}
+
+Acme Tractors is a tractor retailer and, as such, the weekly inventory it holds is based solely on the probability of what will be sold.  Acme analysis shows that it sells an average of 1 tracor per week.  They have made clear to us that their constraints hold them to a maximum inventory of 5 tractors.  Acme has also made us aware that their supplier only delivers over the weekend.  
+
+The Markov chain is defined as a stochastic, or random process, model describing a sequence of possible events in which the probability of each event depends only on the state attained in the previous event.  Markov chains will be an excellent tool to help us optimize the amount of inventory Acme Tractors should or should not purchase in a given week to better ensure that they do not find themselves understocked to meet the probability of thier demand.
+
+To initialize our predictions using Markov chains, we have assembled our transition matrix using Poisson probability and $\lambda=1$.  The reults can be observed in \textbf{Table 1}.
+
+```{r caption = 'h'}
+#create the transition matrix
+truckTransition = matrix(
+  c(dpois(0,lambda),0,              0,              0,              1-ppois(0,lambda),
+    dpois(1,lambda),dpois(0,lambda),0,              0,              1-ppois(1,lambda),
+    dpois(2,lambda),dpois(1,lambda),dpois(0,lambda),0,              1-ppois(2,lambda),
+    dpois(3,lambda),dpois(2,lambda),dpois(1,lambda),dpois(0,lambda),1-ppois(3,lambda),
+    dpois(4,lambda),dpois(3,lambda),dpois(2,lambda),dpois(1,lambda),1-ppois(4,lambda) + ppois(0,lambda)    
+    ),
+  byrow = TRUE,
+  nrow = 5,
+  ncol = 5)
+
+
+knitr::kable(truckTransition,
+      "latex",
+      caption = "Transition Matrix", 
+      booktabs = T,
+      round(4)
+      ) %>%
+  kable_styling(latex_options = c("striped", "HOLD_positon"))
+```
+
+```{r include=FALSE}
+#create the markov chain
+Mctrucks = new("markovchain", states = trucks, byrow = TRUE, transitionMatrix = truckTransition, name = "truckMove")
+
+Mctrucks
+```
+
+```{r include=FALSE}
+#say we start with 5 trucks
+inittrucks = truckTransition[5,]
+```
+
+```{r include=FALSE}
+#week 0 is the initial state
+inittrucks
+#week 2
+a_2 = inittrucks%*%(truckTransition%^%2)
+a_2
+#week 3
+a_3 = inittrucks%*%(truckTransition%^%3)
+a_3
+#week 10
+a_10 = inittrucks%*%(truckTransition%^%10)
+a_10
+```
+
+\section{Probability Distribution}
+We have assumed Acme holds 5 tractors to start on Monday of the first week.  \textbf{Table 2} provides the initial state vector corresponding to 5 trucks and the probability distribution for Acme's number of tractors in stock at the start of Weeks 2,3, and 10. 
+```{r include=FALSE}
+pM = matrix(
+    c(inittrucks, a_2, a_3, a_10),
+    nrow = 4,
+    byrow = TRUE,
+    
+dimnames = list(
+  #headings
+  #rows
+  c("Initial State", "Week 2", "Week 3","Week 10"),
+  #columns
+  c("1", "2", "3", "4", "5")))
+
+pM
+```
+
+```{r}
+knitr::kable(pM,
+      "latex",
+      caption = "Probability Distribution of Tractors In Stock", 
+      booktabs = T,
+      round(4)
+      )%>%
+  kable_styling(latex_options = c("striped", "HOLD_positon"))
+```
+
+```{r include=FALSE}
+#Steady state is continuously right multiplying (iterating) the transition matrix until we find where it converges (getting closer and closer to a point)
+#Have this probability of sellling tractors
+#If I start with the probability of having some number of tractors <=5, then iterate by the probability of selling the tracors (transition matrix) enough times, then will converge to a steady state eventually.
+#This is the probability of the number of tractors I have in the lot, as definited by the transition matrix
+
+## Multiplying initial state by transition matrix, then that result as many times as needed until convergence
+# If we follow the the transition matrix through to convergence, we expect these to be the probabilities of having this many traactors
+
+#find the steady state probabilities
+steadyStates(Mctrucks)
+```
+
+\section{Steady State Probability Vector}
+After right multiplying the initial states by the transition matrix, we right multiply the result by the transition matrix and continue iterations until convergence is obtained, if the initial states do indeed converge.  If we follow the transition matrix through to convergence, we expect the resulting columns to contain the probabilies of possessing their respective number of tractors.  These probabilities are the steady states.  Acme's Steady State Probability vector is shown below in \textbf{Table 3}.
+```{r}
+knitr::kable(steadyStates(Mctrucks),
+      "latex",
+      caption = "Steady State Probability Vector", 
+      booktabs = T,
+      round(4)
+      ) %>%
+  kable_styling(latex_options = c("striped","HOLD_positon"))
+```
+
+
+```{r include=FALSE}
+#overdemand is the vector of probabilities where Dn > Sn for Sn = 1, 2, 3
+overdemand = c(1-ppois(1,lambda),1-ppois(2,lambda), 1- ppois(3,lambda),1- ppois(4,lambda),1- ppois(5,lambda))
+overdemand
+```
+
+```{r include=FALSE}
+100-12.57
+```
+
+
+
+\section{Probability of Overdemand}
+The steady state probability that demand in a given week exceeds supply is calculated to be 12.57% by multiplying the vectors overdemand and steady states.  This tells us that ACME will enjoy an 87.43% probability that it's demand will not exceed it's supply.
+```{r include=FALSE}
+#the following sum calculates the P(Dn > Sn)
+sum(overdemand*steadyStates(Mctrucks))
+```
+
+\section{Sensitivity Analysis}
+Please observe the plot below titled \textbf{Sensitivity Analysis on Mean Demand}.  The plot displays the potential ACME will be unable to meet it's demand should it's sales fall outside of it's estimate of 1 tractor per week.  We have taken the liberty of evaluating overdemand at tractors per week averages of $\frac{1}{2}$, $\frac{3}{4}$, $\frac{5}{4}$, and $\frac{3}{2}$.  Our primary concern is a scenario ACME is overperforming it's average.  In the scenario ACME is able to average sales of 3 tractors every 2 weeks, there is an approximate probability of 13% that it will find itself unable to meet it's demand, should it follow our model.
+```{r}
+#if we are wrong by a certain percent, do we still want to use this model?
+#example if we adjust an assumed constant (1 tractor/wk) by 10% and outcome is a huge %, then model is subject to swings and may not be reliable
+# for sensitivity
+pstar=c()
+lam = c(0.50, 0.75, 1.25, 1.50)
+
+for( i in 1:4){
+	lambda = lam[i]
+	truckTransition = matrix(
+  c(dpois(0,lambda),0,             0,             0,             1-ppois(0,lambda),
+    dpois(1,lambda),dpois(0,lambda),0,             0,             1-ppois(1,lambda),
+    dpois(2,lambda),dpois(1,lambda),dpois(0,lambda),0,             1-ppois(2,lambda),
+    dpois(3,lambda),dpois(2,lambda),dpois(1,lambda),dpois(0,lambda),1-ppois(3,lambda),
+    dpois(4,lambda),dpois(3,lambda),dpois(2,lambda),dpois(1,lambda),1-ppois(4,lambda) + ppois(0,lambda)    
+    ),
+  byrow = TRUE,
+  nrow = 5,
+  ncol = 5)
+	Mctrucks = new("markovchain", states = trucks, byrow = TRUE,      transitionMatrix = truckTransition, name = "truckMove")
+	overdemand = c(1-ppois(1,lambda),1-ppois(2,lambda), 1- ppois(3,lambda),1- ppois(4,lambda),1- ppois(5,lambda))
+	pstar[i] = sum(overdemand*steadyStates(Mctrucks))
+}
+
+plot(lam, pstar,
+     main = "Sensitivity Analysis on Mean Demand",
+     xlab = "Weekly Mean Assumption",  #Average Tractors Sold per Week
+     ylab = "Probability of Overdemand",   
+     xlim=c(0,1.5), 
+     ylim=c(0,.15),
+     )
+```
+
+\section{Conclusion}
+
+To conlude, we will recommend to ACME that it employ this model.  Sales is a highly volatile industry.  Depite this volatility, Acme can be 87.43% confident it can optimally meet it's demand so long as it's average sales continue at 1 Tractor per week.  In the furtunate even that ACME enjoys a prolonged period of higher sales averages as high as 3 tractors every 2 weeks, the probability of remaining properly stocked is calculated to be 86-88%.  In the instance that sales averages do change, our firm will promply rework the model considering those updated averages.  
+
+
+
+
+
+
+
+
+\newpage
+\section{Appendix}
+
+```{r }
+##When I knit, PDF will NOT show:
+#code cells
+#messages
+
+knitr::opts_chunk$set(echo = TRUE,
+                      results = 'hide',
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+```{r }
+#load the needed libraries
+library(markovchain)
+library(diagram)
+library(knitr)
+library(kableExtra)
+library(expm)
+```
+
+```{r }
+#initialize trucks, lambda and matrix
+trucks = c("1","2","3","4","5")
+lambda = 1
+```
+
+```{r}
+#create the transition chain
+truckTransition = matrix(
+  c(dpois(0,lambda),0,              0,              0,              1-ppois(0,lambda),
+    dpois(1,lambda),dpois(0,lambda),0,              0,              1-ppois(1,lambda),
+    dpois(2,lambda),dpois(1,lambda),dpois(0,lambda),0,              1-ppois(2,lambda),
+    dpois(3,lambda),dpois(2,lambda),dpois(1,lambda),dpois(0,lambda),1-ppois(3,lambda),
+    dpois(4,lambda),dpois(3,lambda),dpois(2,lambda),dpois(1,lambda),1-ppois(4,lambda) + ppois(0,lambda)    
+    ),
+  byrow = TRUE,
+  nrow = 5,
+  ncol = 5)
+
+
+knitr::kable(truckTransition,
+      "latex",
+      caption = "Tractor Supply Distribution", 
+      booktabs = T) %>%
+  kable_styling(latex_options = c("striped", "scale_down", "HOLD_positon"))
+```
+
+```{r}
+#create the markov chain
+Mctrucks = new("markovchain", states = trucks, byrow = TRUE, transitionMatrix = truckTransition, name = "truckMove")
+
+Mctrucks
+```
+
+```{r}
+#Steady state is continuously right multiplying (iterating) the transition matrix until we find where it converges (getting closer and closer to a point)
+#Have this probability of sellling tractors
+#If I start with the probability of having some number of tractors <=5, then iterate by the probability of selling the tracors (transition matrix) enough times, then will converge to a steady state eventually.
+#This is the probability of the number of tractors I have in the lot, as definited by the transition matrix
+
+## Multiplying initial state by transition matrix, then that result as many times as needed until convergence
+# If we follow the the transition matrix through to convergence, we expect these to be the probabilities of having this many traactors
+
+#find the steady state probabilities
+steadyStates(Mctrucks)
+```
+
+```{r}
+#say we start with 5 trucks
+inittrucks = truckTransition[5,]
+```
+
+```{r }
+#week 0 is the initial state
+inittrucks
+#week 2
+a_2 = inittrucks%*%(truckTransition%^%2)
+a_2
+#week 3
+a_3 = inittrucks%*%(truckTransition%^%3)
+a_3
+#week 10
+a_10 = inittrucks%*%(truckTransition%^%10)
+a_10
+```
+
+
+```{r}
+pM = matrix(
+    c(inittrucks, a_2, a_3, a_10),
+    nrow = 4,
+    byrow = TRUE,
+    
+dimnames = list(
+  #headings
+  #rows
+  c("Initial State", "Week 2", "Week 3","Week 10"),
+  #columns
+  c("1", "2", "3", "4", "5")))
+
+pM
+```
+
+```{r}
+knitr::kable(pM,
+      "latex",
+      caption = "Probability Distribution", 
+      booktabs = T) %>%
+  kable_styling(latex_options = c("striped", "scale_down", "HOLD_positon"))
+```
+
+```{r}
+#overdemand is the vector of probabilities where Dn > Sn for Sn = 1, 2, 3
+overdemand = c(1-ppois(1,lambda),1-ppois(2,lambda), 1- ppois(3,lambda),1- ppois(4,lambda),1- ppois(5,lambda))
+overdemand
+```
+
+```{r}
+#the following sum calculates the P(Dn > Sn)
+sum(overdemand*steadyStates(Mctrucks))
+```
+
+```{r results = 'hide'}
+#if we are wrong by a certain percent, do we still want to use this model?
+#example if we adjust an assumed constant (1 tractor/wk) by 10% and outcome is a huge %, then model is subject to swings and may not be reliable
+# for sensitivity
+pstar=c()
+lam = c(0.50, 0.75, 1.25, 1.50)
+
+for( i in 1:4){
+	lambda = lam[i]
+	truckTransition = matrix(
+  c(dpois(0,lambda),0,             0,             0,             1-ppois(0,lambda),
+    dpois(1,lambda),dpois(0,lambda),0,             0,             1-ppois(1,lambda),
+    dpois(2,lambda),dpois(1,lambda),dpois(0,lambda),0,             1-ppois(2,lambda),
+    dpois(3,lambda),dpois(2,lambda),dpois(1,lambda),dpois(0,lambda),1-ppois(3,lambda),
+    dpois(4,lambda),dpois(3,lambda),dpois(2,lambda),dpois(1,lambda),1-ppois(4,lambda) + ppois(0,lambda)    
+    ),
+  byrow = TRUE,
+  nrow = 5,
+  ncol = 5)
+	Mctrucks = new("markovchain", states = trucks, byrow = TRUE,      transitionMatrix = truckTransition, name = "truckMove")
+	overdemand = c(1-ppois(1,lambda),1-ppois(2,lambda), 1- ppois(3,lambda),1- ppois(4,lambda),1- ppois(5,lambda))
+	pstar[i] = sum(overdemand*steadyStates(Mctrucks))
+}
+
+#plot(lam, pstar,
+     #main = "Sensitivity Analysis on Mean Demand",
+     #xlab = "Weekly Mean Assumption",
+     #ylab = "Probability of Overdemand",   
+     #xlim=c(0,1.5), 
+     #ylim=c(0,.15)
+     #)  
+```
